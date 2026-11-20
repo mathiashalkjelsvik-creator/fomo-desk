@@ -1,4 +1,4 @@
-// app.js - the desk on the iPhone (STEP 10). Plain JS, no framework, no build step, no outside requests.
+// app.js - the desk on the phone or PC (STEP 10; Android/PC Chrome and iPhone Safari). Plain JS, no framework, no build step, no outside requests.
 // Plan B (hosting B, GitHub Pages): opened once as {URL}#d={DATA_PATH}&k={DATA_KEY}. The fragment never reaches a
 // server; both are kept in localStorage and the fragment is wiped from the address bar at once. Every file under
 // d/{DATA_PATH}/ is AES-256-GCM (12-byte nonce + ciphertext) and is decrypted here with WebCrypto.
@@ -491,35 +491,86 @@ function drawAccount(v){
     <div class="list">
       <div class="arow"><div class="l">Telegram</div><div class="v">${a.notifier === "telegram" ? "connected with STEP 11" : esc(a.notifier)}</div></div>
       <div class="arow"><div class="l">Web push</div><div class="v">${Src.writable ? (a.webPushSubs ? "connected" : "not connected") : "Plan B: Telegram only"}</div></div>
-      ${Src.writable && navigator.standalone ? `<button class="arow" id="en"><div class="l" style="color:#0a84ff">Enable notifications</div></button>` : ""}
       <button class="arow" id="tp" ${Src.writable ? "" : "disabled"}><div class="l" style="color:${Src.writable ? "#0a84ff" : "rgba(235,235,245,.3)"}">Send test push</div></button>
       <button class="arow" id="watch"><div class="l" style="color:#0a84ff">Watch in Grok Bot</div></button>
     </div>
-    ${order.filter(g => groups[g]).map(g => `<div class="group" id="g-${g}">${CAP(g)}</div><div class="list">${groups[g].filter(it => it.key !== "desk.mode").map(setRow).join("")}</div>`).join("")}
+    ${order.filter(g => groups[g]).map(g => { const all = groups[g].filter(it => it.key !== "desk.mode"), main = all.filter(it => it.step12), more = all.filter(it => !it.step12);
+      return `<div class="group" id="g-${g}">${CAP(g)}</div><div class="list">${main.map(setRow).join("")}</div>` +
+        (more.length ? `<details class="more"><summary>More ${g} numbers (${more.length})</summary><div class="list">${more.map(setRow).join("")}</div></details>` : ""); }).join("")}
+    <div class="group">App</div>
+    <div class="list">${installed() ? `<div class="arow"><div class="l">Installed</div><div class="v">opens like an app</div></div>` :
+      `<button class="arow" id="inst"><div class="l" style="color:#0a84ff">Install on this device</div><span class="chev">›</span></button>`}</div>
+    <div class="group">Change log</div>${changesHtml(s && s.changes)}
     <div class="note">${Src.writable ? "" : "Plan B: settings are read here and changed on Telegram (\"set stop to -20%\")."} Hosting: ${esc(a.hosting || "")}</div>`;
   $("#mode", v).onclick = e => { const m = e.target.dataset.m; if (!m || m === mode) return; modeSheet(m); };
   $("#inv", v).onclick = async () => { try { if (navigator.share) { await navigator.share({url: a.inviteUrl}); return; } } catch (e) { if (e.name === "AbortError") return; }
     try { await navigator.clipboard.writeText(a.inviteUrl); toast("Link copied"); } catch (_) { toast("Link copied"); } };
   $("#watch", v).onclick = () => fullScreen();
-  v.querySelectorAll("input[type=range]").forEach(r => {
-    const out = r.parentElement.querySelector(".v");
-    r.oninput = () => out.textContent = r.value;
-    r.onchange = async () => {
-      const k = r.dataset.k;
-      if (!Src.writable) { planBSheet("Change a setting", `set ${k} to ${r.value}`); r.value = r.dataset.orig; out.textContent = r.dataset.orig; return; }
-      try { const j = await (await Src.api("/api/settings", {method: "POST", body: JSON.stringify({key: k, value: +r.value})})).json(); toast(j.text || "Saved"); r.dataset.orig = r.value; }
-      catch (e) { toast(e.detail || "Not saved"); r.value = r.dataset.orig; out.textContent = r.dataset.orig; }
+  const ib = $("#inst", v); if (ib) ib.onclick = async () => {
+    if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch (_) {} installEvt = null; render(); return; }
+    sheet(`<h3>Install the desk</h3><p>Android Chrome: menu ⋮ → <b>Add to Home screen</b> (or <b>Install app</b>).</p>
+      <p>PC Chrome or Edge: the install icon at the right of the address bar, or menu ⋮ → <b>Cast, save and share</b> → <b>Install page as app</b>.</p>
+      <p>iPhone Safari: Share → <b>Add to Home Screen</b>.</p><p class="faint">The key stays on this device; the installed app opens without the link.</p>`); };
+  // STEP 12: slider + exact number field, both range-checked; out of range = refuse and say the range
+  v.querySelectorAll(".setrow[data-k]").forEach(row => {
+    const k = row.dataset.k, r = $("input[type=range]", row), n = $("input[type=number]", row);
+    const lo = +row.dataset.min, hi = +row.dataset.max, orig = () => row.dataset.orig;
+    const revert = () => { r.value = orig(); n.value = orig(); n.classList.remove("bad"); };
+    r.oninput = () => { n.value = r.value; n.classList.remove("bad"); };
+    n.oninput = () => { const x = +n.value; const ok = n.value !== "" && isFinite(x) && x >= lo && x <= hi; n.classList.toggle("bad", !ok); if (ok) r.value = x; };
+    n.onkeydown = e => { if (e.key === "Enter") n.blur(); if (e.key === "Escape") { revert(); n.blur(); } };
+    const commit = async (val) => {
+      const x = +val;
+      if (val === "" || !isFinite(x) || x < lo || x > hi) { toast(`${LABEL(k)}: ${val} refused, range ${row.dataset.range}`); revert(); return; }
+      if (String(x) === String(+orig())) { revert(); return; }
+      if (!Src.writable) { planBSheet("Change a setting", `set ${k} to ${x}`); revert(); return; }
+      try { const j = await (await Src.api("/api/settings", {method: "POST", body: JSON.stringify({key: k, value: x})})).json();
+            toast(j.text || "Saved"); row.dataset.orig = String(j.new); revert(); }
+      catch (e) { toast(e.detail || "Not saved"); revert(); }
+    };
+    r.onchange = () => commit(r.value);
+    n.onchange = () => commit(n.value);
+  });
+  v.querySelectorAll("button.arow[data-edit]").forEach(b => b.onclick = () => editSheet(findSet(b.dataset.edit)));
+}
+const findSet = k => { for (const g of Object.values(S.settings.groups)) { const it = g.find(x => x.key === k); if (it) return it; } return null; };
+const NUM_STEP = it => it.kind === "int" ? 1 : (it.max - it.min) <= 2 ? 0.01 : (it.max - it.min) <= 20 ? 0.05 : 0.5;
+function setRow(it){
+  if ((it.kind === "int" || it.kind === "num") && it.min != null){
+    const step = NUM_STEP(it);
+    return `<div class="setrow" data-k="${esc(it.key)}" data-min="${it.min}" data-max="${it.max}" data-range="${esc(it.range)}" data-orig="${esc(it.value)}">
+      <div class="h"><label for="n-${esc(it.key)}">${esc(LABEL(it.key))}</label>
+        <input class="num tnum" type="number" id="n-${esc(it.key)}" inputmode="decimal" min="${it.min}" max="${it.max}" step="any" value="${esc(it.value)}" aria-describedby="r-${esc(it.key)}"></div>
+      <input type="range" min="${it.min}" max="${it.max}" step="${step}" value="${esc(it.value)}" aria-label="${esc(LABEL(it.key))} slider">
+      <div class="rng" id="r-${esc(it.key)}">${esc(it.range)}${it.value !== it.default ? ` · default ${esc(it.default)}` : ""}</div></div>`;
+  }
+  const val = it.key === "desk.withdraw_address" ? (it.value ? it.value : "not set") : fmtSet(it) || "—";
+  return `<button class="arow" data-edit="${esc(it.key)}"><div class="l">${esc(LABEL(it.key))}</div><div class="v tnum">${esc(val)}</div><span class="chev">›</span></button>`;
+}
+function editSheet(it){
+  if (!it) return;
+  const k = it.key; let field;
+  if (it.kind === "bool") field = `<div class="seg" id="ev">${["on","off"].map(x => `<button data-v="${x === "on"}" class="${String(it.value) === String(x === "on") ? "on" : ""}">${x}</button>`).join("")}</div>`;
+  else if (it.kind === "choice") field = `<div class="seg" id="ev">${it.choices.map(c => `<button data-v="${esc(c)}" class="${c === it.value ? "on" : ""}">${esc(c)}</button>`).join("")}</div>`;
+  else if (it.kind === "time") field = `<input class="field" id="ev" type="time" value="${esc(it.value)}">`;
+  else field = `<input class="field" id="ev" autocomplete="off" autocapitalize="off" spellcheck="false" value="${k === "desk.withdraw_address" ? "" : esc(it.value)}" placeholder="${k === "desk.withdraw_address" ? "Your Solana address" : ""}">`;
+  sheet(`<h3>${esc(LABEL(k))}</h3><p>${esc(it.range === "text" ? (k === "desk.withdraw_address" ? "Only you set this. The desk fills it in on \"withdraw $N\" and stops before Review withdraw." : "Text") : "Allowed: " + it.range)}</p>
+    ${field}<button class="btn primary" id="go" style="margin-top:12px">Save</button>`, sh => {
+    let chosen = null;
+    const ev = $("#ev", sh);
+    if (ev.classList.contains("seg")) ev.onclick = e => { const b = e.target.closest("button"); if (!b) return; chosen = b.dataset.v; ev.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); };
+    $("#go", sh).onclick = async () => {
+      const val = chosen != null ? chosen : ev.value != null ? ev.value.trim() : "";
+      if (!Src.writable) { closeOverlay(); return planBSheet("Change a setting", `set ${k} to ${val}`); }
+      try { const j = await (await Src.api("/api/settings", {method: "POST", body: JSON.stringify({key: k, value: val})})).json(); closeOverlay(); toast(j.text || "Saved");
+            S.settings = await Src.json("settings.json"); render(); }
+      catch (e) { toast(e.detail || "Not saved"); }
     };
   });
 }
-function setRow(it){
-  if ((it.kind === "int" || it.kind === "num") && it.min != null){
-    const step = it.kind === "int" ? 1 : (it.max - it.min) <= 2 ? 0.01 : (it.max - it.min) <= 20 ? 0.05 : 0.5;
-    return `<div class="setrow"><div class="h"><span>${esc(LABEL(it.key))}</span><span class="v">${esc(it.value)}</span></div>
-      <input type="range" min="${it.min}" max="${it.max}" step="${step}" value="${esc(it.value)}" data-k="${esc(it.key)}" data-orig="${esc(it.value)}" aria-label="${esc(it.key)}"></div>`;
-  }
-  const val = it.key === "desk.withdraw_address" ? (it.value ? "set" : "not set") : fmtSet(it) || "—";
-  return `<div class="arow"><div class="l">${esc(LABEL(it.key))}</div><div class="v tnum">${esc(val)}</div></div>`;
+function changesHtml(ch){
+  if (!ch || !ch.length) return `<div class="list"><div class="arow"><div class="l faint">No changes yet</div></div></div>`;
+  return `<div class="list">${ch.slice(0, 10).map(c => `<div class="arow"><div class="l"><div>${esc(c.key)}</div><div class="faint" style="font-size:13px">${esc(String(c.ts).slice(0, 16).replace("T", " "))} · ${esc(c.who)}</div></div><div class="v tnum">${esc(c.old)} → ${esc(c.new)}</div></div>`).join("")}</div>`;
 }
 function modeSheet(m){
   if (m === "PAPER") { if (!Src.writable) return planBSheet("Switch to PAPER", "paper"); }
@@ -534,12 +585,18 @@ function modeSheet(m){
   });
 }
 
+// ---------------------------------------------------------------- install (Android/PC Chrome "Add to Home screen") ----
+let installEvt = null;
+const installed = () => matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches || navigator.standalone === true;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; });
+addEventListener("appinstalled", () => { installEvt = null; toast("Installed"); });
+
 // ---------------------------------------------------------------- boot ----
 Src.init();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 if (!Src.mode){
   $("#tabs").hidden = true;
-  $("#view").innerHTML = `<div class="empty" style="margin-top:30vh">Open the private link the desk gave you once.<br><span class="faint">It carries the key in the part after #, which never leaves this phone.</span></div>`;
+  $("#view").innerHTML = `<div class="empty" style="margin-top:30vh">Open the private link the desk gave you once.<br><span class="faint">It carries the key in the part after #, which never leaves this device.</span></div>`;
 } else { render(); poll(); }
 window.__desk = {S, Src};
 })();
