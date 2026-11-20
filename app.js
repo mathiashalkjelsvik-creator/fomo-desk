@@ -176,7 +176,7 @@ function sheet(html, bind){
 }
 function planBSheet(title, cmd, why){
   sheet(`<h3>${esc(title)}</h3><p>${esc(why || "This copy of the app reads encrypted files (plan B) and can't change the desk. Send this to the desk on Telegram:")}</p>
-    <div class="cmd">${esc(cmd)}</div><button class="btn" id="cp">Copy</button><p class="faint">Telegram commands arrive with STEP 11.</p>`,
+    <div class="cmd">${esc(cmd)}</div><button class="btn" id="cp">Copy</button><p class="faint">Send it to your desk bot on Telegram, or ask Grok Bot.</p>`,
     s => { $("#cp", s).onclick = async () => { try { await navigator.clipboard.writeText(cmd); toast("Copied"); } catch (_) { toast("Select the text to copy"); } }; });
 }
 
