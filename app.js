@@ -88,7 +88,7 @@ async function load(rel, q){ return await Src.json(rel, q); }
 async function poll(){
   try {
     const [st, ch] = await Promise.all([load("state.json"), load("chart.json", S.range)]);
-    S.state = st; S.chart = Object.assign(S.chart || {}, ch); S.lastOk = Date.now(); S.err = null;
+    S.state = st; S.chart = Object.assign(S.chart || {}, ch); S.lastOk = Date.now(); S.err = null; modeTag((stack[stack.length - 1] || {}).name || tab);
     if (Date.now() / 1000 - st.ts > STALE_S) S.err = "stale";
     load("activity.json").then(a => { S.activity = a; render(true); }).catch(() => {});
   } catch (e) { S.err = e.status === 404 && !S.state ? "nodata" : "offline"; }
@@ -136,11 +136,18 @@ document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click
   tab = b.dataset.tab; stack.length = 0; render(); window.scrollTo(0, 0);
 }));
 
+// STEP 13: every screen says PAPER (Home and Coin carry their own pill next to the number)
+function modeTag(screen){
+  let t = $("#modetag"); if (!t) { t = document.createElement("div"); t.id = "modetag"; t.className = "pill paper modetag"; t.textContent = "PAPER"; document.body.appendChild(t); }
+  const mode = (S.state && S.state.mode) || (S.account && S.account.mode);
+  t.hidden = mode !== "PAPER" || screen === "home" || screen === "coin";
+}
 let lastKey = "";
 function render(fromPoll){
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   offlineRow();
   const top = stack[stack.length - 1];
+  modeTag(top ? top.name : tab);
   const key = top ? top.name + ":" + top.arg : tab;
   const view = $("#view");
   if (fromPoll && key === lastKey && view.firstChild){ (UPDATE[top ? top.name : tab] || (() => {}))(view, top && top.arg); return; }
@@ -309,7 +316,7 @@ function fullScreen(){
   const sc = (S.state && S.state.screen) || {};
   const o = $("#overlay");
   o.innerHTML = `<div class="full"><div class="top"><button class="back" id="fx"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>Done</button>
-    <span class="muted" style="font-size:13px">${sc.ts ? "Frame " + hms(sc.ts) : ""}</span></div>
+    <span class="muted" style="font-size:13px">${S.state && S.state.mode === "PAPER" ? `<span class="pill paper" style="margin-right:8px">PAPER</span>` : ""}${sc.ts ? "Frame " + hms(sc.ts) : ""}</span></div>
     <div class="stage"><img id="fimg" alt="Bot's computer" src="${esc(($("#si" + curImg) || {}).src || "")}"></div>
     <div class="bottom">${sc.link ? `<a class="btn primary" href="${esc(sc.link)}" target="_blank" rel="noopener noreferrer">Open on FOMO</a>` : `<button class="btn" disabled>No coin on screen</button>`}</div></div>`;
   $("#fx").onclick = closeOverlay;

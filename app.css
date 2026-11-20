@@ -202,3 +202,6 @@ button,a,summary,[role=button]{cursor:pointer}
   .sheet{max-width:560px;margin:0 auto;border-radius:14px}
   html{scrollbar-color:#3a3a3c #000}
 }
+.modetag{position:fixed;top:calc(var(--st) + 10px);right:calc(16px + var(--sr));z-index:45}
+.modetag[hidden]{display:none!important}
+@media (min-width:700px){.modetag{right:calc(50% - 264px)}}
