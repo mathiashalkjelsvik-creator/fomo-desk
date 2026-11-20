@@ -1,0 +1,7 @@
+:root{color-scheme:dark;--bg:#000;--text:#fff;--sec:rgba(235,235,245,.6);--orange:#ff9f0a}
+html,body{margin:0;background:var(--bg);color:var(--text);font:17px -apple-system,system-ui,sans-serif}
+#app{padding:calc(env(safe-area-inset-top) + 24px) 16px 16px}
+.balance{display:flex;align-items:center;gap:10px;font:600 66px -apple-system,system-ui;font-variant-numeric:tabular-nums}
+.pill{font:600 13px -apple-system;padding:3px 9px;border-radius:999px}
+.paper{background:var(--orange);color:#000}
+.sub{color:var(--sec)}
